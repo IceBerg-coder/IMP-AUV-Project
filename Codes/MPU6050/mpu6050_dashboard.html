@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MPU-6050 live view</title>
+<style>
+:root{--bg:#10161c;--panel:#18212a;--line:#2a3743;--text:#e6edf3;--mute:#8b9bab;--x:#ff6b5e;--y:#5ed39a;--z:#5ea8ff;--acc:#f2c14e}
+@media (prefers-color-scheme:light){:root{--bg:#f1f4f7;--panel:#fff;--line:#d3dce4;--text:#18222c;--mute:#5d6f80;--x:#d9372a;--y:#1c9a62;--z:#2467c9;--acc:#a8740a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 "Segoe UI",system-ui,sans-serif;padding:16px;max-width:1100px;margin-inline:auto}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+h1{font-size:20px;margin:0 auto 0 0;font-weight:600}
+button{background:var(--panel);color:var(--text);border:1px solid var(--line);padding:8px 14px;border-radius:6px;font:inherit;cursor:pointer}
+button.main{background:var(--acc);color:#10161c;border-color:var(--acc);font-weight:600}
+button:focus-visible{outline:2px solid var(--z);outline-offset:2px}
+#status{color:var(--mute);font-size:13px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}
+.panel h2{font-size:14px;margin:0 0 8px;font-weight:600;color:var(--mute)}
+.vals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px}
+.v{font:600 20px ui-monospace,Consolas,monospace}
+.v small{display:block;font:12px "Segoe UI",sans-serif;color:var(--mute)}
+canvas{width:100%;height:170px;display:block}
+#cube{height:260px}
+pre{margin:0;height:170px;overflow:auto;font:12px/1.4 ui-monospace,Consolas,monospace;color:var(--mute);white-space:pre-wrap}
+.warn{color:var(--acc);font-size:13px;display:none;margin-bottom:10px}
+.wide{grid-column:1/-1}
+</style>
+</head>
+<body>
+<header>
+  <h1>MPU-6050 live view</h1>
+  <span id="status">Not connected</span>
+  <button class="main" id="connect">Connect board</button>
+  <button id="demo">Demo data</button>
+  <button id="stop">Stop</button>
+</header>
+<div class="warn" id="warn">Web Serial is not available here. Open this file in Chrome or Edge on a desktop. Close Mbed Studio's serial monitor first, because only one program can use the port.</div>
+
+<div class="grid">
+  <div class="panel">
+    <h2>Orientation</h2>
+    <canvas id="cube"></canvas>
+    <div class="vals" style="margin:8px 0 0">
+      <div class="v" id="roll">0.0<small>Roll (deg)</small></div>
+      <div class="v" id="pitch">0.0<small>Pitch (deg)</small></div>
+      <div class="v" id="temp">0.0<small>Temp (C)</small></div>
+    </div>
+  </div>
+  <div class="panel">
+    <h2>Accelerometer (g)</h2>
+    <div class="vals">
+      <div class="v" style="color:var(--x)" id="ax">0<small>X</small></div>
+      <div class="v" style="color:var(--y)" id="ay">0<small>Y</small></div>
+      <div class="v" style="color:var(--z)" id="az">0<small>Z</small></div>
+    </div>
+    <canvas id="cAcc"></canvas>
+  </div>
+  <div class="panel">
+    <h2>Gyroscope (deg/s)</h2>
+    <div class="vals">
+      <div class="v" style="color:var(--x)" id="gx">0<small>X</small></div>
+      <div class="v" style="color:var(--y)" id="gy">0<small>Y</small></div>
+      <div class="v" style="color:var(--z)" id="gz">0<small>Z</small></div>
+    </div>
+    <canvas id="cGyr"></canvas>
+  </div>
+  <div class="panel">
+    <h2>Serial log (scan, WHO_AM_I, errors)</h2>
+    <pre id="log"></pre>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const N = 200;
+const acc = [[],[],[]], gyr = [[],[],[]];
+let roll = 0, pitch = 0, port = null, reader = null, demoTimer = null, running = false;
+
+if (!('serial' in navigator)) $('warn').style.display = 'block';
+
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function setStatus(t){ $('status').textContent = t; }
+function log(t){ const l = $('log'); l.textContent += t + '\n'; if (l.textContent.length > 6000) l.textContent = l.textContent.slice(-4000); l.scrollTop = l.scrollHeight; }
+
+function push(arr, vals){ vals.forEach((v,i)=>{ arr[i].push(v); if (arr[i].length > N) arr[i].shift(); }); }
+
+function update(a, g, t, r, p){
+  push(acc, a); push(gyr, g); roll = r; pitch = p;
+  ['x','y','z'].forEach((k,i)=>{ $('a'+k).firstChild.nodeValue = a[i].toFixed(2); $('g'+k).firstChild.nodeValue = g[i].toFixed(1); });
+  $('roll').firstChild.nodeValue = r.toFixed(1);
+  $('pitch').firstChild.nodeValue = p.toFixed(1);
+  $('temp').firstChild.nodeValue = t.toFixed(1);
+}
+
+function parseLine(line){
+  line = line.trim();
+  if (!line) return;
+  if (line.startsWith('A[g]')) {
+    const n = line.match(/-?\d+\.?\d*/g);
+    if (n && n.length === 9) {
+      const v = n.map(Number);
+      update(v.slice(0,3), v.slice(3,6), v[6], v[7], v[8]);
+      return;
+    }
+  }
+  log(line);
+}
+
+async function connect(){
+  stopAll();
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+  } catch (e) { setStatus('Could not open port: ' + e.message); return; }
+  setStatus('Connected at 115200 baud. Press the board RESET button to see the scan.');
+  running = true;
+  const dec = new TextDecoderStream();
+  port.readable.pipeTo(dec.writable).catch(()=>{});
+  reader = dec.readable.getReader();
+  let buf = '';
+  try {
+    while (running) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += value;
+      const lines = buf.split('\n'); buf = lines.pop();
+      lines.forEach(parseLine);
+    }
+  } catch (e) { log('Read error: ' + e.message); }
+  setStatus('Disconnected');
+}
+
+async function stopAll(){
+  running = false;
+  if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+  try { if (reader) await reader.cancel(); } catch(e){}
+  try { if (port) await port.close(); } catch(e){}
+  reader = null; port = null;
+}
+
+function demo(){
+  stopAll();
+  setStatus('Showing demo data (no board)');
+  let t = 0;
+  demoTimer = setInterval(()=>{
+    t += 0.05;
+    const r = 35*Math.sin(t), p = 25*Math.sin(t*0.7);
+    const rr = r*Math.PI/180, pp = p*Math.PI/180;
+    const a = [-Math.sin(pp), Math.sin(rr)*Math.cos(pp), Math.cos(rr)*Math.cos(pp)].map(v=>v+(Math.random()-0.5)*0.02);
+    const g = [35*Math.cos(t)*20, 25*0.7*Math.cos(t*0.7)*20, 0].map(v=>v/20+(Math.random()-0.5)*1.5);
+    update(a, g, 29.5, r, p);
+  }, 50);
+}
+
+/* ---------- drawing ---------- */
+function fit(c){
+  const d = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== w*d || c.height !== h*d) { c.width = w*d; c.height = h*d; }
+  const x = c.getContext('2d'); x.setTransform(d,0,0,d,0,0); x.clearRect(0,0,w,h);
+  return [x, w, h];
+}
+
+function chart(c, series, range){
+  const [x, w, h] = fit(c);
+  const cols = [css('--x'), css('--y'), css('--z')];
+  x.strokeStyle = css('--line'); x.lineWidth = 1;
+  x.beginPath(); x.moveTo(0,h/2); x.lineTo(w,h/2); x.stroke();
+  x.fillStyle = css('--mute'); x.font = '11px sans-serif';
+  x.fillText('+' + range, 2, 11); x.fillText('-' + range, 2, h-3);
+  series.forEach((s,i)=>{
+    x.strokeStyle = cols[i]; x.lineWidth = 1.6; x.beginPath();
+    s.forEach((v,k)=>{
+      const px = k/(N-1)*w, py = h/2 - Math.max(-1,Math.min(1,v/range))*(h/2-4);
+      k ? x.lineTo(px,py) : x.moveTo(px,py);
+    });
+    x.stroke();
+  });
+}
+
+const V = [[-1,-.35,-1],[1,-.35,-1],[1,.35,-1],[-1,.35,-1],[-1,-.35,1],[1,-.35,1],[1,.35,1],[-1,.35,1]];
+const E = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+
+function cube(){
+  const [x, w, h] = fit($('cube'));
+  const r = roll*Math.PI/180, p = pitch*Math.PI/180;
+  const pts = V.map(([a,b,c])=>{
+    let y1 = b*Math.cos(r) - c*Math.sin(r), z1 = b*Math.sin(r) + c*Math.cos(r);
+    let x2 = a*Math.cos(p) + z1*Math.sin(p), z2 = -a*Math.sin(p) + z1*Math.cos(p);
+    const s = Math.min(w,h)*0.3 / (1 - z2*0.12);
+    return [w/2 + x2*s, h/2 - y1*s];
+  });
+  x.strokeStyle = css('--text'); x.lineWidth = 1.6;
+  E.forEach(([i,j])=>{ x.beginPath(); x.moveTo(...pts[i]); x.lineTo(...pts[j]); x.stroke(); });
+  // top face marker (board component side) in accent color
+  x.fillStyle = css('--acc'); x.globalAlpha = 0.25; x.beginPath();
+  [3,2,6,7].forEach((i,k)=>k ? x.lineTo(...pts[i]) : x.moveTo(...pts[i])); x.fill(); x.globalAlpha = 1;
+  x.fillStyle = css('--mute'); x.font = '11px sans-serif';
+  x.fillText('Lay the board flat: shaded face = top', 8, h-8);
+}
+
+function frame(){
+  chart($('cAcc'), acc, 2);
+  chart($('cGyr'), gyr, 250);
+  cube();
+  requestAnimationFrame(frame);
+}
+frame();
+
+$('connect').onclick = connect;
+$('demo').onclick = demo;
+$('stop').onclick = async ()=>{ await stopAll(); setStatus('Stopped'); };
+</script>
+</body>
+</html>
