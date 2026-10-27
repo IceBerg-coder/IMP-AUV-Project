@@ -167,19 +167,21 @@ class LinkClient:
     def _handle(self, msg_type: int, payload: bytes):
         if msg_type == MSG_ACK and len(payload) == 1:
             self.last_ack_seq = payload[0]
-        elif msg_type == MSG_TELEMETRY and len(payload) == 9:
-            status, thrust, yaw, pitch, ballast, roll10, pitch10 = struct.unpack("<Bbbbbhh", payload)
+        elif msg_type == MSG_TELEMETRY and len(payload) == 11:
+            status, thrust, yaw, pitch, ballast, roll10, pitch10, depth_cm = struct.unpack("<Bbbbbhhh", payload)
             self.last_telemetry = {
                 "failsafe": bool(status & 0x01),
                 "link_alive": bool(status & 0x02),
                 "leak_latched": bool(status & 0x04),
                 "imu_fault": bool(status & 0x08),
+                "depth_fault": bool(status & 0x10),
                 "thrust": thrust,
                 "yaw": yaw,
                 "pitch": pitch,
                 "ballast": ballast,
                 "roll_deg": roll10 / 10.0,
                 "pitch_deg": pitch10 / 10.0,
+                "depth_m": depth_cm / 100.0,
             }
         elif msg_type == MSG_LEAK and len(payload) == 2:
             wetness, alert = payload

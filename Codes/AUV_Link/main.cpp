@@ -18,6 +18,7 @@
 #include "link_protocol.h"
 #include "pca9685.h"
 #include "imu_mpu6050.h"
+#include "ms5837.h"
 
 using namespace std::chrono_literals;
 using namespace link;
@@ -25,7 +26,7 @@ using namespace link;
 static constexpr auto FAILSAFE_TIMEOUT = 3s;
 static constexpr auto TELEM_PERIOD     = 200ms;
 static constexpr auto LEAK_PERIOD      = 200ms;
-static constexpr auto ARM_TIME         = 3s;
+static constexpr auto ARM_TIME         = 5s;
 static constexpr auto EMPTY_LIMIT      = 10s;   // placeholder: calibrate to syringe stroke
 
 static constexpr uint8_t CH_YAW   = 0;
@@ -48,6 +49,8 @@ static I2C    i2c(PB_9, PB_8);
 static PCA9685 pwm(i2c, 0x40);
 static MPU6050 imu(i2c, 0x68);
 static Timer   imu_timer;
+static MS5837  depth_sensor(i2c, 0x76);
+static Timer   depth_timer;
 
 // N20 ballast motors on the DRV8833 (20 kHz)
 static PwmOut bal_a_in1(D3);
@@ -159,13 +162,17 @@ static void send_telemetry()
 {
     bool link_alive = rx_timer.elapsed_time() <= FAILSAFE_TIMEOUT;
     uint8_t status = (failsafe ? 0x01 : 0x00) | (link_alive ? 0x02 : 0x00)
-                   | (leak_latched ? 0x04 : 0x00) | (imu.healthy() ? 0x00 : 0x08);
+                   | (leak_latched ? 0x04 : 0x00) | (imu.healthy() ? 0x00 : 0x08)
+                   | (depth_sensor.healthy() ? 0x00 : 0x10);
 
     // Attitude in tenths of a degree, int16 little-endian
     int roll10  = (int)lroundf(imu.roll_deg() * 10.0f);
     int pitch10 = (int)lroundf(imu.pitch_deg() * 10.0f);
 
-    uint8_t payload[9];
+    // Depth in centimetres, int16 little-endian
+    int depth_cm = (int)lroundf(depth_sensor.depth_m() * 100.0f);
+
+    uint8_t payload[11];
     payload[0] = status;
     payload[1] = (uint8_t)outputs.thrust;
     payload[2] = (uint8_t)outputs.yaw;
@@ -173,6 +180,7 @@ static void send_telemetry()
     payload[4] = (uint8_t)outputs.ballast;
     put_i16(&payload[5], roll10);
     put_i16(&payload[7], pitch10);
+    put_i16(&payload[9], depth_cm);
     send_frame(MSG_TELEMETRY, payload, sizeof payload);
 }
 
@@ -222,6 +230,13 @@ int main()
     }
     imu_timer.start();
 
+    // Depth sensor: set the surface reference with the vehicle OUT of the water.
+    // Power up in air; the 20 samples take about 1 s.
+    if (depth_sensor.begin()) {
+        depth_sensor.zero_surface(20, 50);
+    }
+    depth_timer.start();
+
     bal_a_in1.period_us(50);
     bal_a_in2.period_us(50);
     bal_b_in1.period_us(50);
@@ -259,6 +274,11 @@ int main()
         float dt = std::chrono::duration<float>(imu_timer.elapsed_time()).count();
         imu_timer.reset();
         imu.update(dt);   // a failed read keeps the last angles and sets the IMU fault bit
+
+        if (depth_timer.elapsed_time() > 100ms) {
+            depth_sensor.update_depth();   // 10 Hz is enough for the depth loop
+            depth_timer.reset();
+        }
 
         apply_outputs();
 

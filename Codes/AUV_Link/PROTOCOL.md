@@ -28,10 +28,10 @@ Multi-byte integers are little-endian. Signed values are two's complement.
 | `0x01` | HEARTBEAT | Pi → MCU | `seq` (u8). Send every 500 ms. |
 | `0x02` | SETPOINT | Pi → MCU | `thrust` (i8, −100…100 %), `yaw` (i8, −45…45° rudder offset), `pitch` (i8, −45…45° rudder offset), `ballast` (i8, −100…100 %) |
 | `0x03` | ACK | MCU → Pi | `seq` (u8), echoed from the HEARTBEAT |
-| `0x10` | TELEMETRY | MCU → Pi | `status` (u8), `thrust` (i8), `yaw` (i8), `pitch` (i8), `ballast` (i8), `attitude_roll` (i16, tenths of a degree), `attitude_pitch` (i16, tenths of a degree). Sent every 200 ms. |
+| `0x10` | TELEMETRY | MCU → Pi | `status` (u8), `thrust` (i8), `yaw` (i8), `pitch` (i8), `ballast` (i8), `attitude_roll` (i16, tenths of a degree), `attitude_pitch` (i16, tenths of a degree), `depth` (i16, centimetres). Sent every 200 ms. |
 | `0x11` | LEAK | MCU → Pi | `wetness` (u8, 0–100 %), `alert` (u8, 1 = water detected). Sent every 200 ms. |
 
-`status` bits: bit 0 = failsafe active, bit 1 = link alive, bit 2 = leak latched, bit 3 = IMU fault (last IMU read failed).
+`status` bits: bit 0 = failsafe active, bit 1 = link alive, bit 2 = leak latched, bit 3 = IMU fault (last IMU read failed), bit 4 = depth sensor fault.
 
 ## Leak sensor
 
@@ -47,6 +47,12 @@ Multi-byte integers are little-endian. Signed values are two's complement.
 - At boot, the gyro is calibrated while the vehicle is held still for about 2 s.
 - `attitude_roll` and `attitude_pitch` are in tenths of a degree, so 123 means 12.3°.
 - The IMU does not drive the failsafe. Its state is only reported, through the status bit.
+
+## Depth
+
+- The MS5837-30BA is read at 10 Hz. Depth is in centimetres below the surface, using fresh-water density (1000 kg/m³).
+- At boot, the surface reference is set by averaging about 1 s of readings. **Power up with the vehicle out of the water**, or the depth will be offset.
+- The depth is reported to the Pi and is not used by the failsafe.
 
 ## Sign conventions
 
@@ -69,7 +75,7 @@ Multi-byte integers are little-endian. Signed values are two's complement.
 | HEARTBEAT seq 7 | `AA 55 01 01 07 6B` |
 | SETPOINT thrust 50, yaw −10, pitch 0, ballast 100 | `AA 55 04 02 32 F6 00 64 CF` |
 | ACK seq 7 | `AA 55 01 03 07 41` |
-| TELEMETRY status 1, thrust 50, yaw −10, pitch 0, ballast 100, roll 0, pitch 0 | `AA 55 09 10 01 32 F6 00 64 00 00 00 00 21` |
+| TELEMETRY status 1, thrust 50, yaw −10, pitch 0, ballast 100, roll 0, pitch 0, depth 0 | `AA 55 0B 10 01 32 F6 00 64 00 00 00 00 00 00 94` |
 | LEAK wetness 85, alert 1 | `AA 55 02 11 55 01 AF` |
 
 Both test suites check these bytes.

@@ -50,9 +50,10 @@ static void test_golden_encode()
     const uint8_t ack_expect[] = {0xAA, 0x55, 0x01, 0x03, 0x07, 0x41};
     CHECK(bytes_equal(buf, n, ack_expect, sizeof ack_expect));
 
-    uint8_t tm[] = {1, 50, 0xF6, 0x00, 100, 0, 0, 0, 0};
-    n = encode(MSG_TELEMETRY, tm, 9, buf, sizeof buf);
-    const uint8_t tm_expect[] = {0xAA, 0x55, 0x09, 0x10, 0x01, 0x32, 0xF6, 0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x21};
+    uint8_t tm[] = {1, 50, 0xF6, 0x00, 100, 0, 0, 0, 0, 0, 0};
+    n = encode(MSG_TELEMETRY, tm, 11, buf, sizeof buf);
+    const uint8_t tm_expect[] = {0xAA, 0x55, 0x0B, 0x10, 0x01, 0x32, 0xF6, 0x00, 0x64,
+                                 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94};
     CHECK(bytes_equal(buf, n, tm_expect, sizeof tm_expect));
 
     uint8_t lk[] = {85, 1};  // wetness 85 %, alert on
