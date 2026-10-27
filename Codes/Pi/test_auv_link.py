@@ -16,8 +16,8 @@ GOLDEN = {
     "setpoint_50_m10_0_100": (al.build_setpoint(50, -10, 0, 100), bytes.fromhex("AA 55 04 02 32 F6 00 64 CF")),
     "ack_seq7": (al.encode(al.MSG_ACK, bytes([7])), bytes.fromhex("AA 55 01 03 07 41")),
     "telemetry": (
-        al.encode(al.MSG_TELEMETRY, bytes([1, 50, 0xF6, 0, 100])),
-        bytes.fromhex("AA 55 05 10 01 32 F6 00 64 F9"),
+        al.encode(al.MSG_TELEMETRY, bytes([1, 50, 0xF6, 0, 100, 0, 0, 0, 0])),
+        bytes.fromhex("AA 55 09 10 01 32 F6 00 64 00 00 00 00 21"),
     ),
     "leak_wet85_alert": (
         al.encode(al.MSG_LEAK, bytes([85, 1])),

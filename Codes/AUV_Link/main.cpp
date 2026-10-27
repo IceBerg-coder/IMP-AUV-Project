@@ -14,8 +14,10 @@
 //     so the N20s are not left stalled at the syringe end-stops.
 //   - Leak alert: latched failsafe until power cycle; SETPOINTs ignored.
 #include "mbed.h"
+#include <cmath>
 #include "link_protocol.h"
 #include "pca9685.h"
+#include "imu_mpu6050.h"
 
 using namespace std::chrono_literals;
 using namespace link;
@@ -44,6 +46,8 @@ static uint8_t   leak_alert = 0;
 // PCA9685 on the shared I2C bus (D14 = PB_9 SDA, D15 = PB_8 SCL)
 static I2C    i2c(PB_9, PB_8);
 static PCA9685 pwm(i2c, 0x40);
+static MPU6050 imu(i2c, 0x68);
+static Timer   imu_timer;
 
 // N20 ballast motors on the DRV8833 (20 kHz)
 static PwmOut bal_a_in1(D3);
@@ -145,18 +149,30 @@ static void send_leak()
     send_frame(MSG_LEAK, payload, sizeof payload);
 }
 
+static void put_i16(uint8_t *dst, int v)
+{
+    dst[0] = (uint8_t)(v & 0xFF);
+    dst[1] = (uint8_t)((v >> 8) & 0xFF);
+}
+
 static void send_telemetry()
 {
     bool link_alive = rx_timer.elapsed_time() <= FAILSAFE_TIMEOUT;
     uint8_t status = (failsafe ? 0x01 : 0x00) | (link_alive ? 0x02 : 0x00)
-                   | (leak_latched ? 0x04 : 0x00);
-    uint8_t payload[5] = {
-        status,
-        (uint8_t)outputs.thrust,
-        (uint8_t)outputs.yaw,
-        (uint8_t)outputs.pitch,
-        (uint8_t)outputs.ballast,
-    };
+                   | (leak_latched ? 0x04 : 0x00) | (imu.healthy() ? 0x00 : 0x08);
+
+    // Attitude in tenths of a degree, int16 little-endian
+    int roll10  = (int)lroundf(imu.roll_deg() * 10.0f);
+    int pitch10 = (int)lroundf(imu.pitch_deg() * 10.0f);
+
+    uint8_t payload[9];
+    payload[0] = status;
+    payload[1] = (uint8_t)outputs.thrust;
+    payload[2] = (uint8_t)outputs.yaw;
+    payload[3] = (uint8_t)outputs.pitch;
+    payload[4] = (uint8_t)outputs.ballast;
+    put_i16(&payload[5], roll10);
+    put_i16(&payload[7], pitch10);
     send_frame(MSG_TELEMETRY, payload, sizeof payload);
 }
 
@@ -199,6 +215,13 @@ int main()
     bool pwm_ok = pwm.begin(50.0f);
     (void)pwm_ok;  // TODO: if false, keep outputs off and report via telemetry
 
+    // IMU: start, then calibrate the gyro while the vehicle is held still (~2 s).
+    // The ESC arming window (3 s) covers this, so nothing moves during calibration.
+    if (imu.begin()) {
+        imu.calibrate_gyro(200, 10);
+    }
+    imu_timer.start();
+
     bal_a_in1.period_us(50);
     bal_a_in2.period_us(50);
     bal_b_in1.period_us(50);
@@ -232,6 +255,10 @@ int main()
         if (!failsafe && rx_timer.elapsed_time() > FAILSAFE_TIMEOUT) {
             enter_failsafe();
         }
+
+        float dt = std::chrono::duration<float>(imu_timer.elapsed_time()).count();
+        imu_timer.reset();
+        imu.update(dt);   // a failed read keeps the last angles and sets the IMU fault bit
 
         apply_outputs();
 
