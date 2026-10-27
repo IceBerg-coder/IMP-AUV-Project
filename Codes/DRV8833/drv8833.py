@@ -11,9 +11,13 @@ class MotorControllerApp:
         self.root.resizable(False, False)
 
         self.ser = None
+        # Last motor command, re-sent periodically so the firmware's 3 s failsafe
+        # does not stop the motor while the operator holds a speed.
+        self.last_cmd = "STOP"
 
         self._create_widgets()
         self._refresh_ports()
+        self._heartbeat()
 
     def _create_widgets(self):
         # 1. Connection Panel
@@ -90,11 +94,19 @@ class MotorControllerApp:
                 messagebox.showerror("Connection Error", str(e))
 
     def _send_command(self, cmd: str):
+        if cmd.startswith(("SPEED:", "BRAKE", "STOP")):
+            self.last_cmd = cmd
         if self.ser and self.ser.is_open:
             try:
                 self.ser.write((cmd + "\n").encode("utf-8"))
             except Exception as e:
                 self.status_var.set(f"Tx Error: {e}")
+
+    def _heartbeat(self):
+        # Re-send the current command every second (firmware stops the motor after 3 s of silence)
+        if self.ser and self.ser.is_open:
+            self._send_command(self.last_cmd)
+        self.root.after(1000, self._heartbeat)
 
     def _on_slider_change(self, value):
         val = int(float(value))

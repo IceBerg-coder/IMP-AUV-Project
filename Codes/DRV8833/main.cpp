@@ -15,6 +15,11 @@ DigitalOut led(LED1);
 // USB Serial interface (ST-Link Virtual COM Port)
 static BufferedSerial pc(USBTX, USBRX, 115200);
 
+// Failsafe: if no valid command arrives within this time, stop the motor.
+static constexpr auto CMD_TIMEOUT = 3s;
+static Timer cmd_timer;
+static bool motor_stopped_by_timeout = false;
+
 void motor_set_speed(float speed) {
     if (speed > 1.0f)  speed = 1.0f;
     if (speed < -1.0f) speed = -1.0f;
@@ -51,6 +56,8 @@ int main() {
     // Ensure motor starts stopped
     motor_set_speed(0.0f);
 
+    cmd_timer.start();
+
     char rx_buf[64];
     int buf_idx = 0;
 
@@ -62,6 +69,7 @@ int main() {
                     rx_buf[buf_idx] = '\0';
 
                     // Parse commands from Python GUI
+                    bool valid = true;
                     if (strncmp(rx_buf, "SPEED:", 6) == 0) {
                         float speed = atof(&rx_buf[6]);
                         motor_set_speed(speed);
@@ -69,12 +77,25 @@ int main() {
                         motor_brake();
                     } else if (strcmp(rx_buf, "STOP") == 0) {
                         motor_set_speed(0.0f);
+                    } else {
+                        valid = false;
+                    }
+
+                    if (valid) {
+                        cmd_timer.reset();
+                        motor_stopped_by_timeout = false;
                     }
                     buf_idx = 0;
                 }
             } else if (buf_idx < (int)sizeof(rx_buf) - 1) {
                 rx_buf[buf_idx++] = ch;
             }
+        }
+
+        // Failsafe check runs every pass, even when no bytes arrive
+        if (!motor_stopped_by_timeout && cmd_timer.elapsed_time() > CMD_TIMEOUT) {
+            motor_set_speed(0.0f);
+            motor_stopped_by_timeout = true;
         }
     }
 }
