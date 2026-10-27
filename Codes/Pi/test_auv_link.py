@@ -19,6 +19,10 @@ GOLDEN = {
         al.encode(al.MSG_TELEMETRY, bytes([1, 50, 0xF6, 100])),
         bytes.fromhex("AA 55 04 10 01 32 F6 64 E6"),
     ),
+    "leak_wet85_alert": (
+        al.encode(al.MSG_LEAK, bytes([85, 1])),
+        bytes.fromhex("AA 55 02 11 55 01 AF"),
+    ),
 }
 
 
@@ -81,6 +85,10 @@ class TestParsing(unittest.TestCase):
             feed_all(p, GOLDEN["heartbeat_seq7"][1]),
             [(al.MSG_HEARTBEAT, bytes([7]))],
         )
+
+    def test_leak_frame_decodes(self):
+        frames = feed_all(al.Parser(), GOLDEN["leak_wet85_alert"][1])
+        self.assertEqual(frames, [(al.MSG_LEAK, bytes([85, 1]))])
 
     def test_zero_length_payload(self):
         frame = al.encode(0x42)

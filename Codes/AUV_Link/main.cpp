@@ -13,9 +13,17 @@ using namespace link;
 
 static constexpr auto FAILSAFE_TIMEOUT = 3s;
 static constexpr auto TELEM_PERIOD     = 200ms;
+static constexpr auto LEAK_PERIOD      = 200ms;
 
 static BufferedSerial pi_link(D1, D0, 115200);  // TX = D1 (PA_9), RX = D0 (PA_10)
 DigitalOut led(LED1);
+
+// Leak sensor (same wiring as Codes/Leak Sensor)
+static AnalogIn  leak_analog(A0);   // AO: 1.0 dry, falls toward 0.0 when wet
+static DigitalIn leak_digital(D2);  // DO: 0 when the comparator trips (water)
+static bool      leak_latched = false;
+static uint8_t   leak_wetness = 0;
+static uint8_t   leak_alert = 0;
 
 struct Outputs {
     int8_t thrust;   // -100..100 %
@@ -55,10 +63,31 @@ static void enter_failsafe()
     failsafe = true;
 }
 
+static void read_leak()
+{
+    float wet = (1.0f - leak_analog.read()) * 100.0f;
+    if (wet < 0.0f)   wet = 0.0f;
+    if (wet > 100.0f) wet = 100.0f;
+    leak_wetness = (uint8_t)wet;
+    leak_alert = (leak_digital.read() == 0) ? 1 : 0;
+
+    if (leak_alert && !leak_latched) {
+        leak_latched = true;      // stays latched until power cycle
+        enter_failsafe();
+    }
+}
+
+static void send_leak()
+{
+    uint8_t payload[2] = {leak_wetness, leak_alert};
+    send_frame(MSG_LEAK, payload, sizeof payload);
+}
+
 static void send_telemetry()
 {
     bool link_alive = rx_timer.elapsed_time() <= FAILSAFE_TIMEOUT;
-    uint8_t status = (failsafe ? 0x01 : 0x00) | (link_alive ? 0x02 : 0x00);
+    uint8_t status = (failsafe ? 0x01 : 0x00) | (link_alive ? 0x02 : 0x00)
+                   | (leak_latched ? 0x04 : 0x00);
     uint8_t payload[4] = {
         status,
         (uint8_t)outputs.thrust,
@@ -81,6 +110,7 @@ static void handle_frame(const Parser &p)
         break;
 
     case MSG_SETPOINT:
+        if (leak_latched) break;  // ignore commands while a leak is latched
         if (p.len() == 3) {
             const uint8_t *d = p.payload();
             outputs.thrust  = clamp_i8((int8_t)d[0], -100, 100);
@@ -102,6 +132,8 @@ int main()
     rx_timer.start();
     Timer telem_timer;
     telem_timer.start();
+    Timer leak_timer;
+    leak_timer.start();
 
     Parser parser;
 
@@ -112,6 +144,12 @@ int main()
                 handle_frame(parser);
                 led = !led;
             }
+        }
+
+        if (leak_timer.elapsed_time() > LEAK_PERIOD) {
+            read_leak();
+            send_leak();
+            leak_timer.reset();
         }
 
         if (!failsafe && rx_timer.elapsed_time() > FAILSAFE_TIMEOUT) {

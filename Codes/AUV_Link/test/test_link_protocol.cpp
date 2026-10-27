@@ -54,6 +54,11 @@ static void test_golden_encode()
     n = encode(MSG_TELEMETRY, tm, 4, buf, sizeof buf);
     const uint8_t tm_expect[] = {0xAA, 0x55, 0x04, 0x10, 0x01, 0x32, 0xF6, 0x64, 0xE6};
     CHECK(bytes_equal(buf, n, tm_expect, sizeof tm_expect));
+
+    uint8_t lk[] = {85, 1};  // wetness 85 %, alert on
+    n = encode(MSG_LEAK, lk, 2, buf, sizeof buf);
+    const uint8_t lk_expect[] = {0xAA, 0x55, 0x02, 0x11, 0x55, 0x01, 0xAF};
+    CHECK(bytes_equal(buf, n, lk_expect, sizeof lk_expect));
 }
 
 static void test_roundtrip_and_fields()

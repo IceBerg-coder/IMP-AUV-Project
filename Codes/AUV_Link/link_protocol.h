@@ -16,6 +16,7 @@ enum MsgType : uint8_t {
     MSG_SETPOINT  = 0x02,
     MSG_ACK       = 0x03,
     MSG_TELEMETRY = 0x10,
+    MSG_LEAK      = 0x11,
 };
 
 // Incremental CRC-8 (poly 0x07, init 0x00).

@@ -27,8 +27,17 @@ Multi-byte integers are little-endian. Signed values are two's complement.
 | `0x02` | SETPOINT | Pi → MCU | `thrust` (i8, −100…100 %), `rudder` (i8, −45…45° offset from centre), `ballast` (i8, −100…100 %) |
 | `0x03` | ACK | MCU → Pi | `seq` (u8), echoed from the HEARTBEAT |
 | `0x10` | TELEMETRY | MCU → Pi | `status` (u8), `thrust` (i8), `rudder` (i8), `ballast` (i8). Sent every 200 ms. |
+| `0x11` | LEAK | MCU → Pi | `wetness` (u8, 0–100 %), `alert` (u8, 1 = water detected). Sent every 200 ms. |
 
-`status` bits: bit 0 = failsafe active, bit 1 = link alive.
+`status` bits: bit 0 = failsafe active, bit 1 = link alive, bit 2 = leak latched.
+
+## Leak sensor
+
+- The leak sensor is read on the STM32: AO → A0 (wetness), DO → D2 (alert, active low from the comparator).
+- `wetness = (1 − A0) × 100`, clamped to 0–100, the same formula as `Codes/Leak Sensor`.
+- When `alert` is 1, the STM32 **latches the leak**: thrust 0, rudder 0, ballast −100 (surface). SETPOINT frames are ignored while latched.
+- The latch clears only on power-up or reset, so a leak can't be cleared by a SETPOINT from the Pi.
+- The Pi should stop mission control and abort the run when it receives a leak alert.
 
 ## Sign conventions
 
@@ -51,5 +60,6 @@ Multi-byte integers are little-endian. Signed values are two's complement.
 | SETPOINT thrust 50, rudder −10, ballast 100 | `AA 55 03 02 32 F6 64 EC` |
 | ACK seq 7 | `AA 55 01 03 07 41` |
 | TELEMETRY status 1, thrust 50, rudder −10, ballast 100 | `AA 55 04 10 01 32 F6 64 E6` |
+| LEAK wetness 85, alert 1 | `AA 55 02 11 55 01 AF` |
 
 Both test suites check these bytes.

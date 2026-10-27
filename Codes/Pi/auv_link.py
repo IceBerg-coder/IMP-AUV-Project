@@ -26,6 +26,7 @@ MSG_HEARTBEAT = 0x01
 MSG_SETPOINT = 0x02
 MSG_ACK = 0x03
 MSG_TELEMETRY = 0x10
+MSG_LEAK = 0x11
 
 HEARTBEAT_PERIOD_S = 0.5
 
@@ -127,6 +128,8 @@ class LinkClient:
         self._running = False
         self._threads = []
         self.last_telemetry = None  # dict with status, thrust, rudder, ballast
+        self.last_leak = None       # dict with wetness, alert
+        self.leak_detected = False  # latches True on the first leak alert
         self.last_ack_seq = None
 
     def start(self):
@@ -168,10 +171,16 @@ class LinkClient:
             self.last_telemetry = {
                 "failsafe": bool(status & 0x01),
                 "link_alive": bool(status & 0x02),
+                "leak_latched": bool(status & 0x04),
                 "thrust": thrust,
                 "rudder": rudder,
                 "ballast": ballast,
             }
+        elif msg_type == MSG_LEAK and len(payload) == 2:
+            wetness, alert = payload
+            self.last_leak = {"wetness": wetness, "alert": bool(alert)}
+            if alert:
+                self.leak_detected = True  # the STM32 latches; the Pi should abort the run
 
     def set_setpoint(self, thrust: int, rudder: int, ballast: int):
         self._write(build_setpoint(thrust, rudder, ballast))
