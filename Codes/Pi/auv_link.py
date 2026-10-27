@@ -5,7 +5,7 @@ Usage (on the Pi, with the Nucleo connected to the UART pins):
     from auv_link import LinkClient
     link = LinkClient("/dev/serial0")
     link.start()
-    link.set_setpoint(thrust=0, rudder=0, ballast=0)
+    link.set_setpoint(thrust=0, yaw=0, pitch=0, ballast=0)
     ...
     link.close()
 
@@ -55,11 +55,12 @@ def build_heartbeat(seq: int) -> bytes:
     return encode(MSG_HEARTBEAT, bytes([seq & 0xFF]))
 
 
-def build_setpoint(thrust: int, rudder: int, ballast: int) -> bytes:
+def build_setpoint(thrust: int, yaw: int, pitch: int, ballast: int) -> bytes:
     payload = struct.pack(
-        "<bbb",
+        "<bbbb",
         _clamp(thrust, -100, 100),
-        _clamp(rudder, -45, 45),
+        _clamp(yaw, -45, 45),
+        _clamp(pitch, -45, 45),
         _clamp(ballast, -100, 100),
     )
     return encode(MSG_SETPOINT, payload)
@@ -166,14 +167,15 @@ class LinkClient:
     def _handle(self, msg_type: int, payload: bytes):
         if msg_type == MSG_ACK and len(payload) == 1:
             self.last_ack_seq = payload[0]
-        elif msg_type == MSG_TELEMETRY and len(payload) == 4:
-            status, thrust, rudder, ballast = struct.unpack("<Bbbb", payload)
+        elif msg_type == MSG_TELEMETRY and len(payload) == 5:
+            status, thrust, yaw, pitch, ballast = struct.unpack("<Bbbbb", payload)
             self.last_telemetry = {
                 "failsafe": bool(status & 0x01),
                 "link_alive": bool(status & 0x02),
                 "leak_latched": bool(status & 0x04),
                 "thrust": thrust,
-                "rudder": rudder,
+                "yaw": yaw,
+                "pitch": pitch,
                 "ballast": ballast,
             }
         elif msg_type == MSG_LEAK and len(payload) == 2:
@@ -182,5 +184,5 @@ class LinkClient:
             if alert:
                 self.leak_detected = True  # the STM32 latches; the Pi should abort the run
 
-    def set_setpoint(self, thrust: int, rudder: int, ballast: int):
-        self._write(build_setpoint(thrust, rudder, ballast))
+    def set_setpoint(self, thrust: int, yaw: int, pitch: int, ballast: int):
+        self._write(build_setpoint(thrust, yaw, pitch, ballast))

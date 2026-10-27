@@ -13,11 +13,11 @@ import auv_link as al
 
 GOLDEN = {
     "heartbeat_seq7": (al.build_heartbeat(7), bytes.fromhex("AA 55 01 01 07 6B")),
-    "setpoint_50_m10_100": (al.build_setpoint(50, -10, 100), bytes.fromhex("AA 55 03 02 32 F6 64 EC")),
+    "setpoint_50_m10_0_100": (al.build_setpoint(50, -10, 0, 100), bytes.fromhex("AA 55 04 02 32 F6 00 64 CF")),
     "ack_seq7": (al.encode(al.MSG_ACK, bytes([7])), bytes.fromhex("AA 55 01 03 07 41")),
     "telemetry": (
-        al.encode(al.MSG_TELEMETRY, bytes([1, 50, 0xF6, 100])),
-        bytes.fromhex("AA 55 04 10 01 32 F6 64 E6"),
+        al.encode(al.MSG_TELEMETRY, bytes([1, 50, 0xF6, 0, 100])),
+        bytes.fromhex("AA 55 05 10 01 32 F6 00 64 F9"),
     ),
     "leak_wet85_alert": (
         al.encode(al.MSG_LEAK, bytes([85, 1])),
@@ -46,11 +46,11 @@ class TestEncoding(unittest.TestCase):
         self.assertEqual(al.crc8(b"123456789"), 0xF4)
 
     def test_setpoint_is_clamped(self):
-        frame = al.build_setpoint(thrust=500, rudder=-999, ballast=-300)
+        frame = al.build_setpoint(thrust=500, yaw=-999, pitch=999, ballast=-300)
         parser = al.Parser()
         (msg_type, payload), = feed_all(parser, frame)
         self.assertEqual(msg_type, al.MSG_SETPOINT)
-        self.assertEqual(struct.unpack("<bbb", payload), (100, -45, -100))
+        self.assertEqual(struct.unpack("<bbbb", payload), (100, -45, 45, -100))
 
     def test_payload_too_long_rejected(self):
         with self.assertRaises(ValueError):
@@ -59,9 +59,9 @@ class TestEncoding(unittest.TestCase):
 
 class TestParsing(unittest.TestCase):
     def test_roundtrip(self):
-        frame = al.build_setpoint(50, -10, 100)
+        frame = al.build_setpoint(50, -10, 0, 100)
         frames = feed_all(al.Parser(), frame)
-        self.assertEqual(frames, [(al.MSG_SETPOINT, struct.pack("<bbb", 50, -10, 100))])
+        self.assertEqual(frames, [(al.MSG_SETPOINT, struct.pack("<bbbb", 50, -10, 0, 100))])
 
     def test_bad_crc_rejected(self):
         bad = bytearray(GOLDEN["heartbeat_seq7"][1])

@@ -40,9 +40,9 @@ static void test_golden_encode()
     const uint8_t hb_expect[] = {0xAA, 0x55, 0x01, 0x01, 0x07, 0x6B};
     CHECK(bytes_equal(buf, n, hb_expect, sizeof hb_expect));
 
-    uint8_t sp[] = {50, 0xF6, 100};  // thrust 50, rudder -10, ballast 100
-    n = encode(MSG_SETPOINT, sp, 3, buf, sizeof buf);
-    const uint8_t sp_expect[] = {0xAA, 0x55, 0x03, 0x02, 0x32, 0xF6, 0x64, 0xEC};
+    uint8_t sp[] = {50, 0xF6, 0x00, 100};  // thrust 50, yaw -10, pitch 0, ballast 100
+    n = encode(MSG_SETPOINT, sp, 4, buf, sizeof buf);
+    const uint8_t sp_expect[] = {0xAA, 0x55, 0x04, 0x02, 0x32, 0xF6, 0x00, 0x64, 0xCF};
     CHECK(bytes_equal(buf, n, sp_expect, sizeof sp_expect));
 
     uint8_t ack[] = {7};
@@ -50,9 +50,9 @@ static void test_golden_encode()
     const uint8_t ack_expect[] = {0xAA, 0x55, 0x01, 0x03, 0x07, 0x41};
     CHECK(bytes_equal(buf, n, ack_expect, sizeof ack_expect));
 
-    uint8_t tm[] = {1, 50, 0xF6, 100};
-    n = encode(MSG_TELEMETRY, tm, 4, buf, sizeof buf);
-    const uint8_t tm_expect[] = {0xAA, 0x55, 0x04, 0x10, 0x01, 0x32, 0xF6, 0x64, 0xE6};
+    uint8_t tm[] = {1, 50, 0xF6, 0x00, 100};
+    n = encode(MSG_TELEMETRY, tm, 5, buf, sizeof buf);
+    const uint8_t tm_expect[] = {0xAA, 0x55, 0x05, 0x10, 0x01, 0x32, 0xF6, 0x00, 0x64, 0xF9};
     CHECK(bytes_equal(buf, n, tm_expect, sizeof tm_expect));
 
     uint8_t lk[] = {85, 1};  // wetness 85 %, alert on
@@ -64,14 +64,14 @@ static void test_golden_encode()
 static void test_roundtrip_and_fields()
 {
     uint8_t frame[32];
-    uint8_t sp[] = {50, 0xF6, 100};
-    size_t n = encode(MSG_SETPOINT, sp, 3, frame, sizeof frame);
+    uint8_t sp[] = {50, 0xF6, 0x00, 100};
+    size_t n = encode(MSG_SETPOINT, sp, 4, frame, sizeof frame);
 
     Parser p;
     CHECK(feed_all(p, frame, n));
     CHECK(p.type() == MSG_SETPOINT);
-    CHECK(p.len() == 3);
-    CHECK(bytes_equal(p.payload(), 3, sp, 3));
+    CHECK(p.len() == 4);
+    CHECK(bytes_equal(p.payload(), 4, sp, 4));
 }
 
 static void test_bad_crc_rejected()
