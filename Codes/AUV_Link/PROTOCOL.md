@@ -2,9 +2,11 @@
 
 Serial link: UART, 115200 baud, 8N1, no flow control.
 
-- Pi 5 TX (GPIO14) → Nucleo **D0** (PA_10, USART1 RX)
-- Pi 5 RX (GPIO15) ← Nucleo **D1** (PA_9, USART1 TX)
+- Pi 5 TX (GPIO14) → Nucleo **PA_10** (USART1 RX)
+- Pi 5 RX (GPIO15) ← Nucleo **PA_9** (USART1 TX)
 - GND shared between the Pi and the Nucleo.
+
+Do not use D0 or D1 for this link. On the Nucleo-F411RE they are USART2, which is the ST-Link USB console. Find PA_9 and PA_10 in the Nucleo-64 user manual (UM1724) pin table, which lists the Arduino header pins.
 
 ## Frame format
 

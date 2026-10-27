@@ -15,7 +15,9 @@ static constexpr auto FAILSAFE_TIMEOUT = 3s;
 static constexpr auto TELEM_PERIOD     = 200ms;
 static constexpr auto LEAK_PERIOD      = 200ms;
 
-static BufferedSerial pi_link(D1, D0, 115200);  // TX = D1 (PA_9), RX = D0 (PA_10)
+// Pi link on USART1 (PA_9 = TX, PA_10 = RX). Do NOT use D0/D1: on this board they are
+// USART2, which is the ST-Link USB console.
+static BufferedSerial pi_link(PA_9, PA_10, 115200);
 DigitalOut led(LED1);
 
 // Leak sensor (same wiring as Codes/Leak Sensor)
