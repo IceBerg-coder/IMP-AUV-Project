@@ -12,6 +12,7 @@ Run:
     python3 camera_test.py                  # 10 s at 1280x720
     python3 camera_test.py --seconds 20 --width 1920 --height 1080
     python3 camera_test.py --exposure-us 4000   # fixed short exposure (less motion blur)
+    python3 camera_test.py --awb-gains 1.8,1.5  # lock white balance (to compare air vs water)
 
 Output (in camera_test_<date-time>/):
     clip.mp4      the recorded clip
@@ -51,6 +52,9 @@ def main():
     ap.add_argument("--fps", type=float, default=30.0, help="requested frame rate")
     ap.add_argument("--exposure-us", type=int, default=0,
                     help="fixed exposure time in microseconds (0 = automatic)")
+    ap.add_argument("--awb-gains", type=str, default="",
+                    help="lock white balance to red,blue gains, e.g. 1.8,1.5 "
+                         "(copy the 'colour gains' from an in-air run)")
     ap.add_argument("--still-every", type=float, default=2.0, help="seconds between stills")
     args = ap.parse_args()
 
@@ -77,6 +81,9 @@ def main():
     picam.configure(config)
     if args.exposure_us > 0:
         picam.set_controls({"AeEnable": False, "ExposureTime": args.exposure_us, "AnalogueGain": 4.0})
+    if args.awb_gains:
+        red, blue = (float(v) for v in args.awb_gains.split(","))
+        picam.set_controls({"AwbEnable": False, "ColourGains": (red, blue)})
     picam.start()
     print("Warming up (2 s) ...")
     time.sleep(2.0)
