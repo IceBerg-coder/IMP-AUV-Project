@@ -35,7 +35,11 @@ except ImportError:
 
 
 def sharpness(gray):
-    """Variance of the Laplacian: higher = sharper. Below ~50 is usually blurred."""
+    """Variance of the Laplacian (on a half-size frame): higher = sharper.
+
+    Only meaningful on a textured scene such as printed text or a checkerboard:
+    a plain wall or a light gives low values even when in focus.
+    """
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
 
@@ -98,9 +102,10 @@ def main():
         writer.write(frame)
         n += 1
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        small = cv2.resize(frame, (w // 2, h // 2), interpolation=cv2.INTER_AREA)  # cheaper metrics
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
         s = sharpness(gray)
-        b, g, r = (float(v) for v in frame.reshape(-1, 3).mean(axis=0))
+        b, g, r = (float(v) for v in cv2.mean(small)[:3])
         rows.append((round(t, 3), round(s, 1), round(b, 1), round(g, 1), round(r, 1)))
 
         if t >= next_still:
@@ -112,6 +117,23 @@ def main():
 
     elapsed = time.monotonic() - t0
     writer.release()
+
+    # The clip was written assuming the requested rate. If the Pi delivered fewer
+    # frames, rewrite it at the measured rate so it plays back at real speed.
+    real_fps = n / elapsed if elapsed > 0 else args.fps
+    if abs(real_fps - args.fps) / args.fps > 0.05:
+        src = os.path.join(out_dir, "clip.mp4")
+        tmp = os.path.join(out_dir, "clip_tmp.mp4")
+        os.replace(src, tmp)
+        cap = cv2.VideoCapture(tmp)
+        fixed = cv2.VideoWriter(src, cv2.VideoWriter_fourcc(*"mp4v"), real_fps, (w, h))
+        ok, f = cap.read()
+        while ok:
+            fixed.write(f)
+            ok, f = cap.read()
+        cap.release()
+        fixed.release()
+        os.remove(tmp)
     md = picam.capture_metadata()
     picam.stop()
     picam.close()
