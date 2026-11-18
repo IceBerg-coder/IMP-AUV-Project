@@ -4,7 +4,7 @@
 Runs a pretrained YOLO model on the live camera, saves an annotated clip and
 stills, and logs every detection to a CSV. Works over SSH with no display.
 
-The default model (yolo11n) knows the 80 COCO classes: person, bottle, cup,
+The default model (yolo26n) knows the 80 COCO classes: person, bottle, cup,
 cell phone, sports ball, chair, etc. Use everyday objects for this first test.
 
 Install once on the Pi (camera packages from apt, YOLO in a venv that can see them):
@@ -19,8 +19,8 @@ Run (inside the venv):
     python3 object_detect_test.py --classes bottle cup  # only these classes
 
 Faster on the Pi: export once to NCNN, then use the exported folder as the model:
-    yolo export model=yolo11n.pt format=ncnn
-    python3 object_detect_test.py --model yolo11n_ncnn_model
+    yolo export model=yolo26n.pt format=ncnn
+    python3 object_detect_test.py --model yolo26n_ncnn_model
 
 Output (in detect_test_<date-time>/):
     detections.mp4    annotated clip
@@ -67,7 +67,7 @@ def rewrite_at_fps(path, fps, size):
 
 def main():
     ap = argparse.ArgumentParser(description="YOLO object detection test on the Pi 5 camera")
-    ap.add_argument("--model", default="yolo11n.pt", help="YOLO model file or NCNN folder")
+    ap.add_argument("--model", default="yolo26n.pt", help="YOLO model file or NCNN folder")
     ap.add_argument("--imgsz", type=int, default=320, help="inference size (320 fast, 640 accurate)")
     ap.add_argument("--conf", type=float, default=0.4, help="minimum confidence")
     ap.add_argument("--classes", nargs="*", default=None, help="only detect these class names")
