@@ -9,7 +9,7 @@ public:
     // addr7: 0x76 with CSB low (default), 0x77 with CSB high.
     explicit MS5837(I2C &bus, uint8_t addr7 = 0x76);
 
-    // Reset and read the factory calibration. False if no ACK or bad calibration.
+    // Reset and read the factory calibration. False if no ACK or the PROM CRC fails.
     bool begin();
 
     // Read pressure (mbar) and temperature (deg C). False on an I2C error.
@@ -26,16 +26,24 @@ public:
 
     bool healthy() const { return healthy_; }
 
+    // Sensor version from PROM word 0 (0x1A = MS5837-30BA, 0x15 = MS5837-02BA)
+    uint8_t version() const { return (uint8_t)((c_[0] >> 5) & 0x7F); }
+
+    // Oversampling: 0 = OSR 256 (0.6 ms) ... 5 = OSR 8192 (18 ms, lowest noise)
+    void set_osr(uint8_t level) { osr_ = level > 5 ? 5 : level; }
+
 private:
     bool write_cmd(uint8_t cmd);
     bool read_adc(uint32_t &value);
     bool read_prom(uint16_t &word, uint8_t index);
     bool convert(uint8_t cmd, uint32_t &value);
+    static uint8_t crc4(const uint16_t prom[7]);
 
     I2C     &bus_;
     int      addr_;     // 8-bit address for Mbed
     bool     healthy_ = false;
-    uint16_t c_[7] = {0};    // C1..C6 used (index 1..6)
+    uint16_t c_[7] = {0};    // word 0 = CRC + version, C1..C6 at index 1..6
+    uint8_t  osr_ = 0;       // OSR level 0..5 (256..8192)
     float    surface_mbar_ = 1013.25f;
     float    depth_m_ = 0.0f;
 };
