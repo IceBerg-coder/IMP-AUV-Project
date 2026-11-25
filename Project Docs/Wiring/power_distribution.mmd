@@ -1,0 +1,20 @@
+flowchart TB
+  BAT["3S LiPo 2800 mAh<br/>11.1 V nominal"] --> FUSE["13 A fuse<br/>(next to battery +)"] --> SW["Switch<br/>12 V DC, 20 A"]
+  SW --> ESC["ZTW Shark 40 A ESC<br/>(BEC not connected)"]
+  SW --> B5["Buck 5 V / 5 A"]
+  SW --> B6["LM2596S 6 V"]
+  SW --> BN["LM2596S ≤ 10 V"]
+  SW --> DIV["Divider 47 k / 10 k"]
+  ESC -- "3 phases" --> X2["X2 thruster<br/>up to ~8 A at 12 V"]
+  B5 --> PI["Raspberry Pi 5<br/>+ camera"]
+  B5 -- "E5V" --> NUC["Nucleo-F411RE<br/>3.3 V to IMU, depth,<br/>PCA9685 logic"]
+  B6 -- "V+" --> PCA["PCA9685"] --> SRV["2 x MG90S servos"]
+  BN -- "VM" --> DRV["DRV8833"] --> N20["N20 ballast motor"]
+  DIV -- "A1" --> NUC
+  classDef pwr fill:#FFF0E5,stroke:#D79B00,color:#111
+  classDef load fill:#E7F6EC,stroke:#82B366,color:#111
+  classDef ctl fill:#EEF4FF,stroke:#6C8EBF,color:#111
+  class BAT,FUSE,SW,B5,B6,BN,DIV pwr
+  class X2,SRV,N20 load
+  class ESC,PI,NUC,PCA,DRV ctl
+  linkStyle 0,1,2,3,4,5,6,8,9,10,12,14 stroke:#C9302C,stroke-width:2px

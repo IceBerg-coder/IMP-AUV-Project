@@ -1,0 +1,61 @@
+digraph W {
+  rankdir=LR; splines=spline; nodesep=0.22; ranksep=0.45; newrank=true;
+  node [shape=plaintext, fontname="Helvetica", fontsize=14];
+  edge [fontname="Helvetica", fontsize=12, arrowsize=0.7, penwidth=2];
+
+  PI [label=<<table border="1" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#EEF4FF" color="#5B7FD1">
+    <tr><td><b>Raspberry Pi 5</b></td></tr>
+    <tr><td>5 V in ← 5 V buck</td></tr>
+    <tr><td>CSI ← Camera Module v2</td></tr>
+    <tr><td port="tx">GPIO14 TXD (pin 8)</td></tr>
+    <tr><td port="rx">GPIO15 RXD (pin 10)</td></tr>
+    <tr><td>GND (pin 6) → common GND</td></tr></table>>];
+
+  NUC [label=<<table border="1" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#EEF4FF" color="#5B7FD1">
+    <tr><td><b>STM32 Nucleo-F411RE</b></td></tr>
+    <tr><td>E5V ← 5 V buck (JP5 on E5V)</td></tr>
+    <tr><td port="d2">D2 / PA_10  USART1 RX</td></tr>
+    <tr><td port="d8">D8 / PA_9  USART1 TX</td></tr>
+    <tr><td>A1 / PA_1 ← battery divider</td></tr>
+    <tr><td port="i2c">D14 / PB_9 SDA,  D15 / PB_8 SCL</td></tr>
+    <tr><td port="ma">D3 / PB_3,  D6 / PB_10  (20 kHz)</td></tr>
+    <tr><td port="mb">D5 / PB_4,  D7 / PA_8  (spare)</td></tr>
+    <tr><td port="lk">A0 / PA_0,  D4 / PB_5  leak</td></tr>
+    <tr><td>3V3 → sensor and PCA9685 logic</td></tr></table>>];
+
+  BUS [shape=box, style="rounded,filled", fillcolor="#E6EEFB", color="#2F6FD6", label="I²C\n100 kHz", fontsize=12];
+
+  PCA [label=<<table border="1" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#EEF4FF" color="#5B7FD1">
+    <tr><td colspan="2"><b>PCA9685  0x40</b>   (OE → GND)</td></tr>
+    <tr><td port="bus" rowspan="3">SDA, SCL,<br/>VCC 3.3 V,<br/>V+ ← 6 V rail</td><td>ch0 → yaw servo (MG90S)</td></tr>
+    <tr><td>ch1 → pitch servo (MG90S)</td></tr>
+    <tr><td port="ch2">ch2 → ESC signal</td></tr></table>>];
+  IMU [label=<<table border="1" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#F3EEFF" color="#8E74D6">
+    <tr><td><b>MPU-6050  0x68</b></td></tr><tr><td port="bus">SDA, SCL, VCC 3.3 V, AD0 → GND</td></tr></table>>];
+  MS [label=<<table border="1" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#F3EEFF" color="#8E74D6">
+    <tr><td><b>MS5837-30BA  0x76</b></td></tr><tr><td port="bus">SDA, SCL, VCC 3.3 V</td></tr></table>>];
+  DRV [label=<<table border="1" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#EEF4FF" color="#5B7FD1">
+    <tr><td colspan="2"><b>DRV8833</b>   (VM ← ≤ 10 V rail, EEP high)</td></tr>
+    <tr><td port="ina">IN1 / IN2</td><td>OUT1 / OUT2 → N20 ballast motor</td></tr>
+    <tr><td port="inb">IN3 / IN4</td><td>OUT3 / OUT4 spare</td></tr></table>>];
+  LEAK [label=<<table border="1" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#F3EEFF" color="#8E74D6">
+    <tr><td><b>Leak sensor (LM393)</b></td></tr><tr><td port="s">AO → A0,  DO → D4,  VCC 3.3 V</td></tr></table>>];
+  ESC [label=<<table border="1" cellborder="1" cellspacing="0" cellpadding="4" bgcolor="#EEF4FF" color="#5B7FD1">
+    <tr><td><b>ZTW Shark G2 40 A ESC</b></td></tr>
+    <tr><td port="sig">Signal + GND ← PCA9685 ch2 (red BEC wire not connected)</td></tr>
+    <tr><td>Power ← battery after fuse and switch</td></tr>
+    <tr><td>3 motor wires → APISQUEEN X2 thruster</td></tr></table>>];
+
+  { rank=same; PCA; IMU; MS; DRV; LEAK; ESC; }
+
+  edge [color="#2E8B57"];
+  PI:tx:e -> NUC:d2:w [label="UART 115200"]; NUC:d8:w -> PI:rx:e [constraint=false];
+  edge [color="#2F6FD6", dir=none];
+  NUC:i2c:e -> BUS;
+  BUS -> PCA:bus:w; BUS -> IMU:bus:w; BUS -> MS:bus:w;
+  edge [color="#E08A00", dir=forward];
+  NUC:ma:e -> DRV:ina:w; NUC:mb:e -> DRV:inb:w;
+  PCA:ch2:e -> ESC:sig:e [constraint=false];
+  edge [color="#7B4FC9"];
+  LEAK:s:w -> NUC:lk:e;
+}
